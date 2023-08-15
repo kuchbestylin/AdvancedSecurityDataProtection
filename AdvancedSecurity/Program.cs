@@ -46,3 +46,26 @@ string hashedPassword = Convert.ToBase64String(KeyDerivation.Pbkdf2(
 Console.WriteLine($"Original Password - {password}");
 Console.WriteLine($"Hashed Password - {hashedPassword}");
 
+
+Console.WriteLine("=================================TimeLimited Protected Data===================================");
+
+var timeLimitedProvider = DataProtectionProvider.Create("AdvancedSecurityDataProtection");
+var timeLimitedProtector = provider.CreateProtector("DataProtection").ToTimeLimitedDataProtector();
+
+string text = "Protect Me";
+Console.WriteLine($"Original Text - {text}");
+var securedText = timeLimitedProtector.Protect(text, lifetime: TimeSpan.FromSeconds(10));
+Console.WriteLine($"Protected Text - {securedText}");
+var unsecuredText = timeLimitedProtector.Unprotect(securedText);
+Console.WriteLine($"Un-Protected Text - {unsecuredText}");
+
+// Lets wait until the time limit ends and then try to unprotect again. An exception is thrown
+Thread.Sleep(10001);
+try
+{
+    timeLimitedProtector.Unprotect(securedText);
+}
+catch (Exception ex)
+{
+    Console.WriteLine(ex.Message);
+}
