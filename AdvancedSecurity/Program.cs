@@ -2,6 +2,9 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using System.Text;
 
 Console.WriteLine("=====================================Protecting Data===================================");
 
@@ -64,6 +67,60 @@ Thread.Sleep(10001);
 try
 {
     timeLimitedProtector.Unprotect(securedText);
+}
+catch (Exception ex)
+{
+    Console.WriteLine(ex.Message);
+}
+
+
+Console.WriteLine("=================================Unprotecting Data With Lost Keys===================================");
+var serviceCollection = new ServiceCollection();
+serviceCollection.AddDataProtection();
+var services = serviceCollection.BuildServiceProvider();
+var dataProtectionProvider = services.GetRequiredService<IDataProtectionProvider>();
+var dataProtector = dataProtectionProvider.CreateProtector("DataProtection.RevokedKeys");
+
+var sensitiveText = "Protect Me";
+Console.WriteLine($"Original text: {sensitiveText}");
+
+var protectedPlainText = dataProtector.Protect(Encoding.UTF8.GetBytes(sensitiveText));
+Console.WriteLine($"Protected text: {Convert.ToBase64String(protectedPlainText)}");
+
+var unProtectedPlainText = dataProtector.Unprotect(protectedPlainText);
+Console.WriteLine($"Unprotected text: {Encoding.UTF8.GetString(unProtectedPlainText)}");
+
+// We will use a Key Manager to remove all the keys
+var keyManagerService = services.GetRequiredService<IKeyManager>();
+keyManagerService.RevokeAllKeys(DateTimeOffset.Now);
+
+
+//Now, we will try to unprotect the text but since the key does not exist, it will fail
+try
+{
+    var tryUnprotect = dataProtector.Unprotect(protectedPlainText);
+}
+catch (Exception ex)
+{
+    Console.WriteLine(ex.Message);
+}
+
+// But let now use the IPersistedDataProtector to unprotect the values without having the keys
+try
+{
+    if (dataProtector is IPersistedDataProtector persistedDataProtector)
+    {
+        bool requiresMigration, wasRevoked;
+        var unprotectedPayload = persistedDataProtector.DangerousUnprotect(
+            protectedData: protectedPlainText,
+            ignoreRevocationErrors: true,
+            requiresMigration: out requiresMigration,
+            wasRevoked: out wasRevoked);
+
+        Console.WriteLine($"RequiresMigration - {requiresMigration}");
+        Console.WriteLine($"WasRevoked - {wasRevoked}");
+        Console.WriteLine($"Unprotected lost key Value - {Encoding.ASCII.GetString(unprotectedPayload)}");
+    }
 }
 catch (Exception ex)
 {
